@@ -1,0 +1,274 @@
+---
+title: '21008019'
+author: '21008019'
+date: "27/04/2022"
+abstract: "The data provided for this report contains labels from a variable of 5 levels. With supervised learning methods it is possible to model the distinction between those levels. A data pipeline was built and 4 models were trained. Testing was done by assessing the models performance on a subset of the data. The validation process was then introduced to provide some picture of the ability of the best model to generalise and classify queries." 
+output:
+  word_document:
+    toc: yes
+    always_allow_html: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+library(corrplot)
+library(ggplot2)
+library(ade4)
+library(factoextra)
+library(psych)
+library(dplyr)
+library(class)
+library(kableExtra)
+library(mclust)
+library(rpart)
+library(randomForest)
+```
+
+# Introduction
+
+The report aims to detail and explain the steps taken in data manipulation and statistical inference to explore it's underlying shape and provide a process for model selection for the classification of the clusters presented.
+
+# Explanatory data analysis
+
+```{r}
+data <- read.csv("../data/21008019.csv")  # read of the original data-set. Edit this filepath to apply this notebook to another dataset.
+
+data$Group <- as.factor(data$Group)  #the Group variable is converted to a factor variable.
+```
+
+
+```{r echo=FALSE}
+corrplot(cor(data[,-c(17)]), method = "ellipse")
+```
+The corrplot gives correlation metrics for pairings of each of the variables.  The figure above gives ellipses for each pairing with both colour and shape being proportional to Pearson's correlation coefficient.  The integer variables, b1 through b6, share strong positive correlations and negative correlations with the continuous variables, Item1 through item10. The continuous variables do also share some strong positive correlations between them, for example, items 3 and 5 have a strong positive correlation but some of these items, such as item 1, have weak inter variate relationships. 
+
+The dataset is a good candidate for dimension reduction.
+
+# Dimension Reduction
+
+Principle component analysis is a method of dimension reduction that produces a number of new orthogonal axes.  A change of basis is performed and the data can be visualized in the new feature space.
+
+```{r include=FALSE}
+data_pca <- dudi.pca(data[,-c(17)], center = TRUE, scannf = FALSE, nf = 4) 
+pca1 <- get_eigenvalue(data_pca)
+```
+The scree plot gives the percentage of the explained variance given by each additional principal component. The figure below, does not have an obvious knee and so I have elected to build a feature space with 4 principle components whose cumulative variance percentage `r pca1$cumulative.variance.percent[4]`.
+
+```{r }
+fviz_screeplot(data_pca, addlabels = T)
+```
+The new data frame will improve computational performance, as there are fewer data points to process, and reduce redundancy, in that, some of the existing features may have not represented much of the variance in the data as well as the principle components.
+
+While we do lose out on $\approx 20\%$ of the information after this compression we would assume that the new space maintains enough variance to represent some distinction between the clusters. 
+
+
+```{r echo=FALSE}
+fviz_pca_var(data_pca, repel = T, label = "var") # visualisation of variables in the default projection of the first and second axis.
+
+fviz_pca_ind(data_pca,
+                geom.ind = "point",
+                col.ind = data$Group,
+                addEllipses = TRUE,
+                legend.title = "Group")
+
+fviz_pca_ind(data_pca, axes = c(2, 3),
+                geom.ind = "point",
+                col.ind = data$Group,
+                addEllipses = TRUE,
+                legend.title = "Group")
+
+fviz_pca_ind(data_pca, axes = c(3, 4),
+                geom.ind = "point",
+                col.ind = data$Group,
+                addEllipses = TRUE,
+                legend.title = "Group")
+
+fviz_pca_ind(data_pca, axes = c(1, 3),
+                geom.ind = "point",
+                col.ind = data$Group,
+                addEllipses = TRUE,
+                legend.title = "Group")
+
+fviz_pca_ind(data_pca, axes = c(1, 4),
+                geom.ind = "point",
+                col.ind = data$Group,
+                addEllipses = TRUE,
+                legend.title = "Group")
+```
+One advantage of PCA is for visualizations. It allows for pictorial representation of the relationship between variables and drawing of clusters in the new feature space. The first plot above shows the arrangement of the existing variables in the transformed space projected across the first 2 dimensions. The first dimension, which represents `r  pca1$cumulative.variance.percent[1]` of the variation in the data is a linear combination that is most dependent of the opposition of items: 3 and 5, and items: 2, 6 and 10. It can be inferred that a significant proportion of the variance between observations are accounted for by these 5 variables.
+The second dimension here is a combination of all the integer variables less the combination of all continuous variables. The remaining plots show the drawing of each individual data point in various 2 dimensional projections. 
+
+The clusters of groups A and D are separated distinctly in the (1, 2), (1, 3) and (1, 4) projections. The (3, 4) projection separates the clusters for groups B and E well. We can find assurance that this process will elicit improved performance from the classification process as each projection provides some varied separation between all groups.
+
+# Methodology
+
+A test-train split of the new data set was performed.
+
+```{r include=FALSE}
+red_data <- data_pca$li
+red_data$Group <- data$Group
+
+N <- nrow(data)
+ind <- sample(1:N, N*.8) # 80/20 test-train split indexed.
+X_train <- red_data[ind, 1:4]
+y_train <- red_data[ind, 5]
+X_test <- red_data[-ind, 1:4]
+y_test <- red_data[-ind, 5]
+```
+For training, a subset with `r N*.8` rows was taken from the dimension reduced data. Group labels were reintroduced as they'd been left out of the PCA. The training set will provide information for training of the models. For testing the remaining rows would provide a test set with which the models would be tested. The model with the highest testing score will be brought forward for validation and the models general performance can be inferred.
+
+# KNN
+
+```{r echo=FALSE}
+# 6 KNN models are trained, the tuning of the hyperparameter K changes the number of neighbours that are used to classify.
+k_3nn <- knn(train=X_train, test=X_test, cl=y_train, k=3, prob=T)
+k_4nn <- knn(train=X_train, test=X_test, cl=y_train, k=4, prob=T)
+k_5nn <- knn(train=X_train, test=X_test, cl=y_train, k=5, prob=T)
+k_6nn <- knn(train=X_train, test=X_test, cl=y_train, k=6, prob=T)
+k_7nn <- knn(train=X_train, test=X_test, cl=y_train, k=7, prob=T)
+k_8nn <- knn(train=X_train, test=X_test, cl=y_train, k=8, prob=T)
+
+#performance is assessed by summing the diagnoal of the resulting confusion matrix and dividing by the number of queries, this gives the proportion of the queries that are correctly classified.
+res_3 <- sum(diag(table(y_test, k_3nn[1:length(y_test)])))
+
+res_4 <- sum(diag(table(y_test, k_4nn[1:length(y_test)])))
+
+res_5 <- sum(diag(table(y_test, k_5nn[1:length(y_test)])))
+
+res_6 <- sum(diag(table(y_test, k_6nn[1:length(y_test)])))
+
+res_7 <- sum(diag(table(y_test, k_7nn[1:length(y_test)])))
+
+res_8 <- sum(diag(table(y_test, k_8nn[1:length(y_test)])))
+
+knn_performance <- list(sum(diag(res_3))/length(y_test), sum(diag(res_4))/length(y_test), sum(diag(res_5))/length(y_test), sum(diag(res_6))/length(y_test), sum(diag(res_7))/length(y_test), sum(diag(res_8))/length(y_test)) 
+
+#comparison table
+perf_mat <- matrix(c(knn_performance[1], knn_performance[2], knn_performance[3], knn_performance[4], knn_performance[5], knn_performance[6]), ncol=6)
+colnames(perf_mat) <- c("k = 3", "k = 4", "k = 5", "k = 6", "k = 7", "k = 8")
+rownames(perf_mat) <- c("Test Accuracy")
+perf_mat
+```
+The k nearest neighbours algorithm is a powerful classifier.  It estimates the classification of a query by computing the K nearest observations by shortest euclidean distance in the feature space. Each of those k neighbours votes as to which group the query represents.  The classification is then given by the group that counts the most votes. This method can be computationally expensive as euclidean distances between the query and all observations must be calculated to ascertain which are of the k nearest.  It is therefore far better that the model is trained and applied to data in the new feature space.
+
+6 models were trained with values for k in the range 3 to 8 and tested against the test set. The 5 neighbour model was the best performing and classified the test set observations with an accuracy of `r knn_performance[3]` 
+
+#Model Based Discriminant Analysis
+```{r echo=FALSE} 
+#the model is fit to the training set
+da_fit <- MclustDA(X_train,
+                   y_train,
+                   verbose = FALSE)
+
+#testing and performance extraction
+da_test <- predict(da_fit, newdata = X_test)
+
+da_performance <- sum(diag(table(Pred = da_test$classification, y_test)))/length(y_test)
+
+print(paste0("Model based DA Classification rate: ", da_performance))
+```
+Model based discriminant analysis is a clustering method that aims to identify the underlying distributions from which the data is sampled. The model assumes that the samples are taken from a mixture of multidimensional Gaussian clusters. Once the location an shape of the distributions is computed, queries can be classified by their location in the feature space. 
+
+There is some consideration to be made considering the mathematical assumptions when implementing this method.  Without context it is difficult to comment on the validity of that assumption for this process.  Despite that lack of context, the classifier was able to classify the test observations to an accuracy of `r da_performance`. It is also important to note that this technique is prone to overfitting if the sample is not representative of the shape of the underlying data. Where there is significant overlap of the clusters this may lead to more misclassifications during validation.
+
+# Decision Tree
+
+```{r echo=FALSE}
+#model fit
+tree_fit <- rpart(Group~., data = red_data[ind,])
+
+#testing and performance extraction
+tree_test <- predict(tree_fit, newdata=red_data[-ind, 1:4], type="vector")
+
+tree_performance <- sum(diag(table(red_data[-ind, 5], tree_test)))/length(y_test)
+
+print(paste0("Decision Tree Classification rate: ", tree_performance))
+tree_fit$variable.importance
+
+```
+Decision trees are non parametric models that map observations to, during a classification query, a number of discrete variables by learning a hierarchy of if/ else statements.  During training branches are created by selection of the linear discriminators across the various single axes.  The best discriminators are those that cause the biggest decrease in entropy.
+
+The decision tree was able to achieve a classification rate of `r tree_performance`. Another useful aspect of decision trees is there ability to return variable importances. These values give the contribution by each feature towards the total decrease of entropy by the induced tree. For the tree above Axis1 and Axis4 are most important and Axis2 is the least important.
+
+```{r echo=FALSE}
+#model fit
+rf_fit <- randomForest(Group~., data = red_data[ind,])
+
+#testing and performance
+rf_test <- predict(rf_fit, newdata=red_data[-ind,]) 
+
+rf_performance <- sum(diag(table(red_data[-ind, 5], rf_test)))/length(y_test)
+
+print(paste0("Random Forest Classification rate: ", rf_performance))
+
+rf_fit$importance
+```
+A random forest is an ensemble learning method where a number of trees are induced for classification. Each tree acts as an independent decision agent and the technique draws from the wisdom of the crowd to estimate the class of a query.  Diversity of opinion is engineered when the algorithm randomly selects only 2 axis for testing at each split. When a query is processed all trees vote towards it's classification and the group with the most votes is given. 
+
+The random forest agrees with the decision tree that Axis1 and Axis4 are most important in that they provide the greatest contribution towards the reduction of entropy, and that Axis 2 is the least important. 
+
+#Performance Comparison
+```{r echo=FALSE}
+
+perf_mat <- matrix(c(knn_performance[3], da_performance, tree_performance, rf_performance), ncol=4)
+colnames(perf_mat) <- c("KNN", "Model-Based DA", "Decision Tree", "Random Forest")
+rownames(perf_mat) <- c("Test Accuracy")
+perf_table <- as.table(perf_mat)
+kbl(perf_table) %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+
+```
+The random forest provided the best classification rate for the data provided. The lowest performing classifier was the decision tree, perhaps due to their tendancy to overfit. By inducting many trees with diverse opinions, the random forest model improves upon the single trees performance by providing more bias and improved generalisability.
+
+## COnfusion Matrix
+```{r echo=FALSE}
+table(red_data[-ind, 5], rf_test) 
+```
+The benefit of the random forest model extends beyond it's ability to predict.  The variable importance gives some picture of the underlying data.
+```{r}
+fviz_pca_var(data_pca, repel = T, label = "var", axes = c(1, 4))
+fviz_pca_ind(data_pca, axes = c(1, 4),
+                geom.ind = "point",
+                col.ind = data$Group,
+                addEllipses = TRUE,
+                legend.title = "Group")
+```
+The arrangement of the variables shown above provides the most useful in terms of classifying these observations with this method. From the individual plot we see that the center of each ellipses finds it's own distinct area of the space.
+
+# Validation
+
+The validation process requires a sample of the data not employed in either training or testing of the model. The validation data must be transformed through the same vector that was taken while performing the original PCA above before the model can be implemented.
+
+```{r}
+val_data <- read.csv("../data/Validation_21008019.csv") #by editing this file path it is possible to run this notebook using another validation set.
+val_data$Group <- as.factor(val_data$Group)
+
+#the validation data is then transformed and the points are plotted in the existing feature space with 4 principal components as above.
+val_data_pca <- suprow(data_pca, val_data[,-c(17)] )
+red_val_data <- val_data_pca$lisup
+red_val_data$Group <- val_data$Group
+```
+
+The model is implemented using the complete validation set with no split as the model has already been trained.  
+
+```{r}
+rf_val <- predict(rf_fit, newdata=red_val_data)
+validation_perf <- sum(diag(table(red_val_data[,c(5)], rf_val)))/nrow(red_val_data)
+validation_perf
+
+```
+The random forest achieved a classification rate of `r validation_perf` during validation.  It can be inferred that the model does not generalise well and signals an over fit to the training set. There is some possibility, if sampled incorrectly, that the distributions generating both training and validation sets are different.
+
+```{r}
+#ks.test(val_data[,-c(17)], data[,-c(17)]) 
+
+# here I tried to perform a ks test with the null hypothesis that both samples come from the same distribution. However I was unable to fix the error.
+```
+If the null hypothesis from the test is not rejected then there is no difference between the two distributions and there is further confirmation that the model has overfit and does not generalise.  If the ks test rejects the null hypothesis there is evidence of some problem in the data collection process.
+
+#Conclusion
+
+Of the 4 techniques tested, the random forests produced the highest test score. However the model failed to demonstrate much ability to generalise during validation. Further testing of the distribution of both samples, the training data and validation needs to be performed to ascertain the extent to which the model has overfit. One such test could be a two sample Kolmogorov-Smirnov test with the null hyptothesis that there is no difference between the sample distributions.

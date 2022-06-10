@@ -1,0 +1,424 @@
+---
+title: 'Exam Template: Statistical Inference'
+author: "21008019"
+date: 'Jan 2022: Sep21 run'
+output:
+  word_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+# do not change these options
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(error = TRUE,comment=NA) # do not edit this line.
+```
+
+# Instructions to students
+
+You should only use the file Exam_template.Rmd provided on blackboard and you should load this file from your scripts folder / directory.
+
+Save this template as your studentID.Rmd; you will upload this file as your submission. Change the information on line 3 of this file – changing the author information to your **student ID**. Do not change the authorship to your name.
+
+Ensure that you save your data into your data folder (as discussed in class). You may use the files mypackages.R and helperFunctions.R from blackboard. If you use these files, do not alter them. If you wish to create additional files for custom functions that you have prepared in advance, make sure that you upload these in addition to your .Rmd file and your compiled output file.
+
+Your should knit this file to a document **Word** format.
+
+Any changes that you make to the data (e.g. variable name changes) should be made entirely within R.
+
+The subsubsections labelled **Answer:** indicate where you should put in your written Answers. The template also provides blank code chunks for you to complete your Answers; you may choose to add additional chunks if required.
+
+```{r libraries, include=FALSE}
+# load required libraries / additional files
+source("mypackages.R")
+
+```
+
+```{r data}
+# load dataset
+car_df <- read.csv("Jan_2022_Exam_Data.csv")
+car_df$brand <- as.factor(car_df$brand)
+car_df$model <- as.factor(car_df$model)
+
+```
+
+# Data description
+
+
+This dataset is part of a larger dataset that has been collected to help to estimate the price of used cars.
+
+It contains the following variables:
+
+- brand (manufacturer)
+- model (of car)
+- year (of registration of the car)
+- price (in GB pounds)
+- transmission (type of gearbox)
+- mileage (total distance covered by the car)
+- fuelType (type of fuel used by the car)
+- tax (annual cost of vehicle tax)
+- mpg (miles per gallon - a measure of fuel efficiency)
+- engineSize (size of the engine in litres)
+
+
+
+# Question 1: Data Preparation (11 marks)
+
+You are interested in modelling the price of vehicles that have all of the following properties:
+
+- mileage less than 60000
+- Manual transmission
+- Petrol engine (fuelType)
+- Costing less than £200 in annual Vehicle Tax.
+
+Once you have selected the rows of data with these properties, then you must *use your studentID* to select a random sample of 2000 rows of the data to perform the rest of your analysis with.
+
+You should remove any redundant variables (where only one value remains in that variable).
+
+This subset of the data is what you should use for the rest of this assessment. 
+
+
+a. Explain what data preparation is required in order for the data in Jan_2022_Exam_Data.csv to be suitable for this analysis.
+
+**(4 marks)**
+
+### Answer:
+Check for NULL values and remove rows where they exist. 
+Filter the remaining data and create a subset that includes records where mileage in less than 60000, the transmission is Manual, the fueltype is petrol and the annual tax is less than £200 in annual vehicle tax. Then any redundant columns should be removed where only one distinct value appears is left in the column. 
+
+
+b. Implement the required data preparation in the code chunk below:
+
+**(7 marks)**
+
+### Answer:
+
+```{r dataprep}
+#filtering rows to create subset.
+car_df <- na.omit(car_df)
+car_df <- filter(car_df, mileage<60000, transmission=="Manual", fuelType=="Petrol", tax<200)
+drop <- c("transmission", "fuelType")
+car_df <- car_df[,!(names(car_df) %in% drop)]
+
+#setting of seed and sample creation
+set.seed(21008019)
+n = 2000
+sample_df <- car_df[sample(1:nrow(car_df), n),]
+
+
+```
+
+# Question 2: Exploratory Data Analysis (22 marks)
+
+## Descriptive Statistics
+
+a.	What descriptive statistics would be appropriate for this dataset?  Explain why these are useful in this context.
+
+**(2 marks)**
+
+### Answer: 
+For description of the raw data it would be useful to produce summary statistics for each variable. This may show if there are any issues in the data, in particular engine size and mileage, which should lie between sensible and realistic values. This will allow us to determine if any further cleaning of the data is necessary before modelling and will inform any statistical inferences made.
+
+Then a summary of the price grouped by vehicle brand will allow us to discern if there is any significant difference between these levels of the data.
+
+b. Produce those descriptive statistics in the code chunk below:
+
+**(4 marks)**
+
+### Answer:
+
+```{r DescriptiveStats}
+#statistics for the whole sample
+summary(sample_df)
+
+#statistics grouped by brand
+sample_df %>%
+  group_by(brand) %>%
+  summarise(min = min(price),
+            q1 = quantile(price, 0.25),
+            median = median(price),
+            mean = mean(price),
+            q3 = quantile(price, 0.75),
+            max = max(price),
+            meanEngine = mean(engineSize))
+```
+
+c. What have those descriptive statistics told you – and how does this inform the analysis that you would undertake on this data or any additional data cleaning requirements?
+
+**(4 marks)**
+
+### Answer:
+The minimum value for engineSize is 0, which is not possible. This suggests that some errors were made while creating the data-set and that further cleaning is required. If were possible it would be useful to communicate with the surveyor to find out what the smallest engine size should be and remove any records with engine sizes smaller than that accounted for by the surveyor. There are a similar issues with car mileages; where the minimum value is 9, which is unrealistic for a used car; and also tax, where the minimum is zero, which is lower than the minimum tax band price for a car that has CO2 emissions more than 0g/km. Cleaning the data with respect to mileage may be difficult where without contact with the surveyor it is difficult to establish a realistic range. 
+
+It is also important to take note of the number of cars in each brand level in our sample. There are 1517 records with Ford cars, more than the number of all records that aren't Ford's. Any model we create from this data-set may be more applicable to the prediction of Ford cars then any other model. While Ford cars make up, on average, the cheapest vehicles in the data-set, their mean engine size is also the lowest. It is important to take note of the apparent relationship between these independent predictors that may cause issue when performing multivariate analysis.
+
+Using the analysis above to reinforce any prior knowledge of the market for used cars. It can be predicted that both mileage and year will make strong predictors for the price of a used car as they are less likely to be dependent on any of the other independent variable. 
+
+
+## Exploratory Graphs
+
+d. What exploratory graphs would be appropriate for this dataset? Explain why these are useful in this context.
+
+**(2 marks)**
+
+### Answer:
+Histograms for engineSize and mileage will be useful to establish whether the identified faulty values are numerous enough to cause significant effect on the shape of the data. It would be appropriate to explore the relationship between both mileage and price, and year and price.
+
+
+
+e. Now produce those exploratory graphs in the code chunk below:
+
+**(4 marks)**
+
+### Answer:
+
+```{r ExploratoryGraphs}
+#histogram for engineSize with vline for mean engine size.
+p1 <- ggplot(sample_df, aes(x=engineSize)) +
+  geom_histogram(binwidth = 0.1, colour="darkblue", fill="lightblue") + 
+  geom_vline(aes(xintercept=mean(engineSize)), linetype="dashed") +
+  ggtitle("Histogram(p1) - engineSize")
+
+#histogram for mileage.
+p2 <- ggplot(sample_df, aes(x=mileage)) +
+  geom_histogram(colour="darkred", fill="tomato1") + 
+  geom_vline(aes(xintercept=mean(mileage)), linetype="dashed") +
+  ggtitle("Histogram(p2) - mileage")
+
+#scatterplot for price~mileage.
+p3 <- ggplot(sample_df, aes(x=mileage, y=price)) +
+  geom_point(colour="mediumpurple", fill="mediumorchid1") +
+  ggtitle("price vs mileage (p3)") +
+  xlab("mileage") +
+  ylab("price(GBP)")
+
+#scatterplot for price~year
+p4 <- ggplot(sample_df, aes(x=year, y=price)) +
+  geom_point(colour="darkorchid", fill="gold3") +
+  ggtitle("price vs year (p4)" ) +
+  xlab("year") +
+  ylab("price(GBP)")
+
+
+(p1|p2) / (p3|p4)
+
+```
+
+f. Interpret these exploratory graphs.  How do these graphs inform your subsequent analysis?
+
+**(4 marks)**
+
+### Answer:
+From the histogram, p1, we can see that further cleaning of the data with respect to engine size won't be problematic as there are very few, if more then a single, anomalies with an engine size far lower then what is considered reasonable for our data sub-set. Removing these rows should not cause significant damage to the sample such that further analysis would prove impossible.
+
+```{r}
+###removal of records with engineSize anomaly.
+clean_sample <- filter(sample_df, engineSize>0)
+
+```
+
+Another point of concern was noted while describing the data. Where the minimum value for mileage was lower than expected. The expectation for those values was inferred from the description of the data-set that read "used car" data was provided. The histogram, p2, shows that the data-set differs from the expected shape with a left-handed skew. This suggests that concern was rooted in a miss understanding of the initial data description which didn't implicitly mention that all the cars in the data-set were used beyond a specific mileage or even used at all.
+
+Scatterplots, p3 and p4, confirm the hypothesis that both year and mileage are good candidates for independent predictors. Plot p3 shows that there is some discernible relationship between the price and mileage, as expected, price decreases with increasing mileage. Plot p4 also follows a logical trend that price should increase with a vehicle's falling age. Both plots show relatively high variance which can be accounted for by the correlation with the other variables and the price. For example, as suggested by the descriptive statistics, it is expected on average a Mercedes will be more dear than a Ford with similar year and mileage.
+
+
+## Correlations
+
+g. What linear correlations are present within this data?
+
+**(2 marks)**
+
+### Answer:
+
+```{r linearcor}
+
+
+m <- cor(clean_sample %>% select_if(is.numeric))
+corrplot(m, method='number')
+
+
+```
+The price is most strongly correlated with both year and mpg. Both correlation coefficients are equal and of opposite signs with the price~year relationship in the positive direction. Mileage is strongly correlated with year, as can be expected, the older a car is the more likely it will have accrued more miles. Engine size is also strongly correlated to mpg. This is also inline with scientific expectation in that a vehicle with a bigger engine is more likely to have a high fuel consumption rate and therefore travels a shorter distance per gallon of fuel.
+
+# Question 3: Bivariate relationship (14 marks)
+
+a. Which of the potential explanatory variables has the strongest linear relationship with the dependent variable?
+
+**(1 mark)**
+
+### Answer:
+The year.
+
+
+b. Create a linear model to model this relationship.
+
+**(2 marks)**
+
+### Answer:
+
+
+```{r model1}
+slr <- lm(price~year, data=clean_sample)
+summary(slr)
+
+```
+
+c. Explain and interpret the model:
+
+**(3 marks)**
+
+### Answer:
+The coefficient of determination $r^2=0.3562$ shows that approximately 36% of the variation of price is accounted for by the year. The p-value $=2.2e^{-16}$ suggests there is enough evidence to reject the null hypothesis that there is no relationship in the population. 
+
+Using the coefficient estimates a regression equation can be drawn:
+$price = -3.603e^{6} + 1.792e^{3}year\pm5.402e$
+
+
+d. Comment on the performance of this model, including comments on overall model fit and the validity of model assumptions. Include any additional code required for you to make these comments in the code chunk below.
+
+**(4 marks)**
+
+### Answer:
+
+```{r model1performance}
+check_model(slr)
+
+```
+
+The linearity of the residuals is relatively flat. Predictions below 5000 and above 16000 have slightly larger error. Few values have significantly high residuals as expected. While there is plenty of variance in the model the interquartile range of the residuals is relatively smaller then the range. There's no significant concerns regarding the homogeneity of residuals and none of the points. There is also no apparent problem with influential observations in that, if any single data point were to be deleted it would not cause any significant change in the conclusions. The normality of residuals offers the largest cause for concern. This could have been caused by the fact the input data was not normally distributed.
+
+
+## Bootstrap
+
+e. Use bootstrapping on this model to obtain a 95% confidence interval of the estimate of the slope parameter.
+
+**(4 marks)**
+
+### Answer:
+
+```{r bootstrap}
+Nrepeats<-1000 #number of samples taken
+bootstrap_input <- as.data.frame(cbind(clean_sample$price, clean_sample$year))
+
+bsample <- bootstrap_input[sample(nrow(bootstrap_input), 50, replace=TRUE),] #sample size = 50
+
+
+coeff <- NULL #empty sample 
+
+for(i in seq_len(Nrepeats)){
+  sample = bsample[sample(1:nrow(bsample), nrow(bsample), replace=TRUE), ]
+  slope_bootstrap <- lm(sample$V1 ~ sample$V2, data=sample)
+  coeff <- c(coeff, slope_bootstrap$coefficients[2])
+}
+
+quantile(coeff, prob=c(0.025, 0.975))
+
+```
+
+
+
+# Question 4: Multivariable relationship (10 marks)
+
+Create a model with all of the appropriate remaining explanatory variables included:
+
+```{r model2}
+mvr <- lm(price ~., data=clean_sample %>% select_if(is.numeric))
+summary(mvr)
+
+```
+
+a. Explain and interpret the model:
+
+**(4 marks)**
+
+### Answer:
+The coefficient of determination $r^2=0.6835$ shows that approximately 68% of the variation of price is accounted for by the model. The p-value $=2.2e^{-16}$ suggests there is enough evidence to reject the null hypothesis that there is no relationship between price and the dependent variables in the population. 
+
+This model as less error then the linear model created with the year predictor. This residuals of this model have a smaller interquartile range 
+
+Regression equation:
+$price = 1.565e^{3}(year)-6.374e^{-2}(mileage)-1.171e(tax)-1.545e^{2}(mpg)+5.383e^{3}(engineSize)-3.140e^{6}$
+
+
+
+b. Comment on the performance of this model, including comments on overall model fit and the validity of model assumptions. Include any additional code required for you to make these comments in the code chunk below.
+
+**(4 marks)**
+
+### Answer:
+
+
+```{r model2performance}
+
+check_model(mvr)
+
+```
+
+c. What general concerns do you have regarding this model?
+
+**(2 marks)**
+
+### Answer: 
+There are issues with the linearity of the residuals. An increase of error is observed when predicted values are lower than 1000 and higher than 35,000. There aren't any influential observations and deleting any single data point would not cause a noticeable change in the models conclusions. It was assumed that there would be some issues with multi-colinearity, due to the relationships between independent predictors showing stronger correlation than their individual relationship with price. The residuals satisfy the assumption of normality. 
+
+# Question 5: Model simplification (8 marks)
+
+
+a.	What approaches for model simplification would you consider implementing and why?
+
+**(4 marks)**
+
+### Answer:
+Stepwise regression is a process of model simplification. An empty model is created and the variable with the smallest p value is added. Each iteration of the stepwise function adds another variable to the model while also removing a variable if their significance within the model is lost following that step. 
+
+
+b.	What are the potential advantages of simplifying a model?
+
+**(2 marks)**
+
+### Answer:
+Models, after simplification, can achieve a comparable outcome with less data and take less time to train. They can be used to optimise workflow and cut down time taken to process data during large projects.
+
+
+c.	 What are the potential disadvantages of simplifying a model?
+
+**(2 marks)**
+
+### Answer:
+With both forward selection and stepwise regression it is often difficult to predict the variables joint behaviour in the model if their selection is based on their individual significance. Therefore the simplified model might not be optimised with the considered predictors as most combinations will have not been tested. 
+
+# Question 6: Reporting (35 marks)
+
+A client is looking to purchase a used Skoda Superb (registration year either 2018 or 2019, manual transmission, petrol engine) and wants to understand what factors influence the expected price of a used car, (and how they influence the price). 
+
+Write a short report of 300-500 words for the client. 
+
+Furthermore, include an explanation as to which model you would recommend, and why you have selected that model. 
+
+Comment on any suggestions for alterations to the model that would be appropriate to consider. 
+
+Highlight what may or may not be directly transferable from the scenario analysed in Questions 1 to 5. 
+
+
+### Answer:
+
+For petrol engine, manual cars, the mileage and engine size have the biggest effect on the price. Price scales upwardly with falling mileage and increasing engine size. For lower budgets, it is reasonable to assume that cars with small engines that have accrued more miles will be a more realistic option. It is important to note however that with increasing mileage the likeliness of wear being a significant issue for the potential owner increases. Buyers seeking value for money should therefore lean towards a selection of vehicles with the smallest engines while also looking for relatively lower miles. While they make less impact, the increase of annual tax fee, mpg and age also correlate to a decrease in price of the vehicle. In some special cases the trends identified may not apply, for example, if the car in question is a classic car, where the price is most heavily influenced by the cars rarity, which is more likely to scale upwardly with increasing age and thus produce a conclusion opposite to what is expected by the multivariable relationship 
+
+For improvement to the model I would suggest the inclusion of more variables in the dataset including the number of doors, the insurance category of the vehicle, the number of previous owners and the existence of full, part or no service history as these factors will also have a significant impact on the prices of cars. In addition it would be beneficial to include more car brands in the dataset, as it was observed that there was a significant difference between distributions of price between the considered car brands The effect of varied marketing strategies between various brands will, and apparently does have a significant effect on the mean price of those vehicles. For the client's specific needs it is reasonable to assume the inclusion of Skoda as a brand in the input dataset would reduce the error of the model in this specific case.
+
+For the prediction of price I would recommend the multivariable model as it accounts for a greater percentage of the variation in the price. It also provides a platform for model simplification by backwards elimination that may yield a model with less error. 
+
+
+
+
+
+
+
+
+
+# Session Information
+
+Do not edit this part. Make sure that you compile your document so that the information about your session (including software / package versions) is included in your submission.
+
+```{r}
+sessionInfo()
+```
